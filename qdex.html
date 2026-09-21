@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>音乐剪辑 · 导出变速修复</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+    body { background: #0a0818; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 10px; color: #eee8ff; }
+    .app { width: 100%; max-width: 500px; background: #161331; border-radius: 30px; padding: 16px; box-shadow: 0 20px 50px black; }
+    .top { display: flex; justify-content: space-between; margin-bottom: 12px; }
+    .logo { font-weight: 800; background: linear-gradient(135deg, #ffab70, #ff7ab0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 1.4rem; }
+    .loadbtn { background: #7b5ef0; color: white; border: none; padding: 10px 20px; border-radius: 50px; font-weight: 700; }
+    .loadbtn:active { background: #8f74ff; }
+    input[type='file'] { display: none; }
+    .filename { background: #1e1949; padding: 8px; border-radius: 30px; text-align: center; border: 1px dashed #6c60ac; }
+    .wavebox { position: relative; background: #0f0c22; border-radius: 20px; padding: 4px; margin-top: 12px; }
+    #waveCanvas { display: block; width: 100%; height: 160px; border-radius: 12px; }
+    .playhead { position: absolute; left: 0%; top: 0; width: 3px; background: #ff3b8d; height: 100%; display: none; }
+    .sel { background: #1b1738; border-radius: 20px; padding: 12px; margin-top: 8px; }
+    .rangebar { position: relative; height: 45px; background: #312a61; border-radius: 30px; }
+    .rangecolor { position: absolute; height: 100%; background: rgba(255, 177, 85, 0.25); border-radius: 30px; left: 0%; width: 10%; }
+    .handle-left, .handle-right { position: absolute; top: 50%; transform: translateY(-50%); background: #f9b571; width: 32px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 15px; font-weight: 800; border: 3px solid #1f1950; }
+    .handle-left { left: 0%; } .handle-right { left: 80%; }
+    .timeinfo { display: flex; justify-content: space-between; padding: 8px 4px; color: #d8bdf3; }
+    .timeline-sec { font-size: 0.9rem; color: #ffb668; }
+    .playrow { display: flex; gap: 6px; align-items: center; background: #1d1b4d; border-radius: 40px; padding: 14px; margin-top: 12px; }
+    .playbtn { width: 66px; height: 66px; border-radius: 50%; background: linear-gradient(145deg,#fd6191,#f83c7f); border: none; color: white; font-size: 2.5rem; }
+    .replaybtn { background: #1bad89; padding: 12px 18px; border-radius: 40px; color: white; font-weight: 700; border: none; }
+    .timecenter { flex: 1; text-align: center; }
+    #timeText { font-size: 1.4rem; color: #ffcda2; font-family: monospace; }
+    .jumpzone { background: #1b1740; border-radius: 25px; padding: 12px; margin-top: 10px; }
+    .jumprow { display: flex; gap: 4px; align-items: center; }
+    .jumprow span { color: #b6a9f8; }
+    #relSec { background: #050a1f; border: 2px solid #6657be; color: #f9bf8a; width: 70px; padding: 6px; border-radius: 30px; text-align: center; font-weight: bold; }
+    #jumpBtn { background: #8a6af0; border: none; flex: 1; padding: 8px; border-radius: 40px; color: white; font-weight: bold; }
+    .speedline { display: flex; align-items: center; margin: 10px 0; background: #1a1640; padding: 12px; border-radius: 40px; }
+    #speedRange { flex: 1; }
+    #speedValue { width: 46px; text-align: center; }
+    .export { background: #27af79; border: none; color: #fff; font-size: 1.2rem; padding: 14px; border-radius: 60px; width: 100%; margin-top: 10px; font-weight: 800; }
+    .export:disabled { background: #384; opacity: 0.4; }
+    .status { margin-top: 10px; text-align: center; background: #0d1025; padding: 10px; color: #b6a6ff; border-radius: 40px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><span class="logo">🎧 剪辑修复</span><button class="loadbtn" id="loadBtn">📂载入</button><input type="file" id="audioFile" accept=".mp3,.wav,.ogg,.m4a,.aac"></div>
+  <div class="filename" id="fileName">请载入音频</div>
+  <div class="wavebox" id="waveBox">
+    <canvas id="waveCanvas"></canvas>
+    <div class="playhead" id="playHead"></div>
+  </div>
+  <div class="sel">
+    <div class="rangebar" id="rangeTrack">
+      <div class="rangecolor" id="rangeColor"></div>
+      <div class="handle-left" id="leftHandle">『</div>
+      <div class="handle-right" id="rightHandle">』</div>
+    </div>
+    <div class="timeinfo">
+      <span class="timeline-sec">选区起点: <b id="startLabel">0.00s</b></span>
+      <span class="timeline-sec">选区长度: <b id="durLabel">10.00s</b></span>
+    </div>
+  </div>
+  <div class="playrow">
+    <button class="playbtn" id="playBtn">▶</button>
+    <button class="replaybtn" id="replayBtn">⟲ 选区重播</button>
+    <div class="timecenter"><div id="timeText">0.00s</div></div>
+  </div>
+  <div class="jumpzone">
+    <div class="jumprow">
+      <span>跳至选区第</span>
+      <input type="number" id="relSec" value="0" min="0" step="0.1">
+      <span>秒</span>
+      <button id="jumpBtn">跳转</button>
+    </div>
+  </div>
+  <div class="speedline">
+    <span style="margin-right:8px">⏩ 速率</span>
+    <input type="range" id="speedRange" min="0.3" max="2" step="0.1" value="1">
+    <span id="speedValue">1.0x</span>
+  </div>
+  <button class="export" id="exportBtn" disabled>导出为MP3</button>
+  <div class="status" id="statusMsg">拖动选区，播放试听，导出会保留变速效果</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script>
+(function() {
+  const canvas = document.getElementById('waveCanvas');
+  const ctx = canvas.getContext('2d');
+  const loadBtn = document.getElementById('loadBtn');
+  const fileIn = document.getElementById('audioFile');
+  const fileName = document.getElementById('fileName');
+  const leftHandle = document.getElementById('leftHandle');
+  const rightHandle = document.getElementById('rightHandle');
+  const rangeColor = document.getElementById('rangeColor');
+  const startLabel = document.getElementById('startLabel');
+  const durLabel = document.getElementById('durLabel');
+  const playBtn = document.getElementById('playBtn');
+  const replayBtn = document.getElementById('replayBtn');
+  const timeText = document.getElementById('timeText');
+  const relSecInput = document.getElementById('relSec');
+  const jumpBtn = document.getElementById('jumpBtn');
+  const speedRange = document.getElementById('speedRange');
+  const speedValue = document.getElementById('speedValue');
+  const exportBtn = document.getElementById('exportBtn');
+  const statusMsg = document.getElementById('statusMsg');
+  const playHead = document.getElementById('playHead');
+  const waveBox = document.getElementById('waveBox');
+  const rangeTrack = document.getElementById('rangeTrack');
+
+  let actx = null;
+  let srcBuffer = null;
+  let clipBuf = null;
+  let originalDur = 0;
+  let start = 0;
+  let end = 0;
+  let loaded = false;
+  let playing = false;
+  let srcNode = null;
+  let activeDrag = null;
+  let speedFactor = 1.0;
+  let s0 = 0;
+
+  function getCtx() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    return actx;
+  }
+
+  function drawWave() {
+    if (!srcBuffer) return;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight || 160;
+    canvas.width = w * devicePixelRatio;
+    canvas.height = h * devicePixelRatio;
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = '#0d0b1d';
+    ctx.fillRect(0, 0, w, h);
+    const data = srcBuffer.getChannelData(0);
+    const step = Math.ceil(data.length / w);
+    ctx.beginPath();
+    ctx.strokeStyle = '#9686e0';
+    for (let x = 0; x < w; x++) {
+      let min = 0, max = 0;
+      for (let i = x * step; i < Math.min((x + 1) * step, data.length); i++) {
+        let v = data[i];
+        if (v > max) max = v;
+        if (v < min) min = v;
+      }
+      let y1 = h / 2 - max * h * 0.44;
+      let y2 = h / 2 - min * h * 0.44;
+      ctx.moveTo(x, y1);
+      ctx.lineTo(x, y2);
+    }
+    ctx.stroke();
+  }
+
+  function updateUI() {
+    if (!loaded) return;
+    const p1 = (Math.min(start, end) / originalDur) * 100;
+    const p2 = (Math.max(start, end) / originalDur) * 100;
+    rangeColor.style.left = p1 + '%';
+    rangeColor.style.width = (p2 - p1) + '%';
+    leftHandle.style.left = p1 + '%';
+    rightHandle.style.left = p2 + '%';
+    startLabel.textContent = Math.min(start, end).toFixed(2) + 's';
+    durLabel.textContent = Math.abs(end - start).toFixed(2) + 's';
+    drawWave();
+  }
+
+  function buildClip() {
+    if (!actx || !srcBuffer) return;
+    const sr = srcBuffer.sampleRate;
+    const s_in = Math.floor(Math.min(start, end) * sr);
+    const e_in = Math.floor(Math.max(start, end) * sr);
+    if (e_in - s_in < 10) return;
+    const newBuf = actx.createBuffer(srcBuffer.numberOfChannels, e_in - s_in, sr);
+    for (let ch = 0; ch < srcBuffer.numberOfChannels; ch++) {
+      let srcData = srcBuffer.getChannelData(ch);
+      let dst = newBuf.getChannelData(ch);
+      for (let i = s_in; i < e_in; i++) dst[i - s_in] = srcData[i];
+    }
+    clipBuf = newBuf;
+  }
+
+  function startFromClipOffset(relOffset) {
+    if (!clipBuf) return;
+    stopAll();
+    getCtx();
+    if (actx.state === 'suspended') actx.resume();
+    const src = actx.createBufferSource();
+    src.buffer = clipBuf;
+    src.loop = true;
+    src.playbackRate.value = speedFactor;
+    src.connect(actx.destination);
+    const maxLen = Math.abs(end - start);
+    if (relOffset >= maxLen) relOffset = 0;
+    src.start(0, relOffset);
+    srcNode = src;
+    playing = true;
+    playBtn.textContent = '❚❚';
+    s0 = actx.currentTime - relOffset / speedFactor;
+    function update() {
+      if (!playing || !actx) return;
+      const currentPos = (actx.currentTime - s0) * speedFactor;
+      const relClip = currentPos % maxLen;
+      const absCur = Math.min(start, end) + relClip;
+      timeText.textContent = relClip.toFixed(2) + 's';
+      if (originalDur) {
+        playHead.style.left = (absCur / originalDur * 100) + '%';
+        playHead.style.display = 'block';
+      }
+      requestAnimationFrame(update);
+    }
+    requestAnimationFrame(update);
+  }
+
+  function stopAll() {
+    if (srcNode) { try { srcNode.stop(); } catch(e) {} srcNode = null; }
+    playing = false;
+    playBtn.textContent = '▶';
+    playHead.style.display = 'none';
+  }
+
+  loadBtn.addEventListener('click', () => fileIn.click());
+  fileIn.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const buffer = await file.arrayBuffer();
+    try {
+      getCtx();
+      const decoded = await actx.decodeAudioData(buffer.slice(0));
+      srcBuffer = decoded;
+      originalDur = decoded.duration;
+      start = 0;
+      end = Math.min(originalDur, 10);
+      if (end > originalDur) end = originalDur;
+      loaded = true;
+      exportBtn.disabled = false;
+      fileName.textContent = file.name;
+      buildClip();
+      updateUI();
+      startFromClipOffset(0);
+      statusMsg.textContent = '✅ 加载完成，播放从选区起点开始';
+    } catch (err) { alert('载入失败'); }
+    fileIn.value = '';
+  });
+
+  leftHandle.addEventListener('touchstart', (e) => { activeDrag = 'L'; e.preventDefault(); e.stopPropagation(); });
+  rightHandle.addEventListener('touchstart', (e) => { activeDrag = 'R'; e.preventDefault(); e.stopPropagation(); });
+  document.addEventListener('touchmove', (e) => {
+    if (!activeDrag || !loaded) return;
+    const rect = rangeTrack.getBoundingClientRect();
+    let per = (e.touches[0].clientX - rect.left) / rect.width;
+    per = Math.max(0, Math.min(1, per));
+    const t = per * originalDur;
+    if (activeDrag === 'L' && t < end - 0.1) start = t;
+    if (activeDrag === 'R' && t > start + 0.1) end = t;
+    updateUI();
+  });
+  document.addEventListener('touchend', () => {
+    if (activeDrag) { activeDrag = null; buildClip(); startFromClipOffset(0); }
+  });
+  leftHandle.addEventListener('mousedown', (e) => { activeDrag = 'L'; e.preventDefault(); });
+  rightHandle.addEventListener('mousedown', (e) => { activeDrag = 'R'; e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (!activeDrag || !loaded) return;
+    const rect = rangeTrack.getBoundingClientRect();
+    let per = (e.clientX - rect.left) / rect.width;
+    per = Math.max(0, Math.min(1, per));
+    const t = per * originalDur;
+    if (activeDrag === 'L' && t < end - 0.1) start = t;
+    if (activeDrag === 'R' && t > start + 0.1) end = t;
+    updateUI();
+  });
+  document.addEventListener('mouseup', () => {
+    if (activeDrag) { activeDrag = null; buildClip(); startFromClipOffset(0); }
+  });
+
+  waveBox.addEventListener('click', (e) => {
+    if (!clipBuf || !loaded) return;
+    const rect = waveBox.getBoundingClientRect();
+    const rat = (e.clientX - rect.left) / rect.width;
+    const absTime = rat * originalDur;
+    if (absTime < Math.min(start, end) || absTime > Math.max(start, end)) {
+      const len = Math.abs(end - start) || 1;
+      start = absTime - len / 2;
+      end = absTime + len / 2;
+      if (start < 0) start = 0;
+      if (end > originalDur) end = originalDur;
+      buildClip();
+      updateUI();
+      startFromClipOffset(0);
+    } else {
+      const relativePos = absTime - Math.min(start, end);
+      startFromClipOffset(relativePos);
+    }
+  });
+
+  replayBtn.addEventListener('click', () => { if (clipBuf) startFromClipOffset(0); });
+  playBtn.addEventListener('click', () => {
+    if (!clipBuf) return;
+    if (playing) { stopAll(); }
+    else { startFromClipOffset(0); }
+  });
+  jumpBtn.addEventListener('click', () => {
+    if (!clipBuf) return;
+    let val = parseFloat(relSecInput.value);
+    if (isNaN(val) || val < 0) val = 0;
+    const clipLen = Math.abs(end - start);
+    if (val >= clipLen) val = clipLen - 0.05;
+    startFromClipOffset(val);
+  });
+  speedRange.addEventListener('input', () => {
+    speedFactor = parseFloat(speedRange.value);
+    speedValue.textContent = speedFactor.toFixed(1) + 'x';
+    if (srcNode) srcNode.playbackRate.value = speedFactor;
+  });
+
+  // ================= 导出MP3（唯一修复：应用变速） =================
+  exportBtn.addEventListener('click', async () => {
+    if (!clipBuf) return;
+    stopAll();
+    statusMsg.textContent = 'MP3导出中...';
+    try {
+      // 创建一个离线上下文，将clipBuf与变速加速后渲染
+      const sr = clipBuf.sampleRate;
+      // 计算变速后的采样数：变速后时长改变
+      const targetRate = speedFactor;
+      const newLength = Math.floor(clipBuf.length / targetRate);
+      const ctxOff = new OfflineAudioContext(clipBuf.numberOfChannels, newLength, sr);
+      const s = ctxOff.createBufferSource();
+      s.buffer = clipBuf;
+      s.playbackRate.value = targetRate;
+      s.connect(ctxOff.destination);
+      s.start();
+      const rendered = await ctxOff.startRendering();
+      
+      // 从rendered获取数据（已变速）
+      const ch = Math.min(2, rendered.numberOfChannels);
+      const data0 = rendered.getChannelData(0);
+      const data1 = ch === 2 ? rendered.getChannelData(1) : null;
+      
+      // 编码为mp3
+      const left = new Int16Array(rendered.length);
+      const right = ch === 2 ? new Int16Array(rendered.length) : null;
+      for (let i = 0; i < rendered.length; i++) {
+        left[i] = Math.max(-1, Math.min(1, data0[i])) * 0x7FFF;
+        if (right) right[i] = Math.max(-1, Math.min(1, data1[i])) * 0x7FFF;
+      }
+      const enc = new lamejs.Mp3Encoder(ch, sr, 128);
+      const chunks = [];
+      const bs = 1152;
+      for (let i = 0; i < left.length; i += bs) {
+        const l = Math.min(bs, left.length - i);
+        const b = enc.encodeBuffer(left.subarray(i, i+l), right ? right.subarray(i, i+l) : null);
+        if (b.length > 0) chunks.push(new Uint8Array(b));
+      }
+      const flush = enc.flush();
+      if (flush.length > 0) chunks.push(new Uint8Array(flush));
+      const blob = new Blob(chunks, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = '选区变速.mp3';
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      statusMsg.textContent = '✅ 导出成功，已包含变速效果';
+    } catch (err) {
+      console.error(err);
+      statusMsg.textContent = '导出失败';
+    }
+  });
+
+  window.addEventListener('resize', () => { if (srcBuffer) drawWave(); });
+})();
+</script>
+</body>
+</html>
